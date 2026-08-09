@@ -35,8 +35,31 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       await sender?.start();
     }
-    final messageBytes = Uint8List.fromList("merhaba UDP, ben Yunus".codeUnits);
-    sender?.sendPayload(messageBytes);
+    //
+    final messages = [
+      "parça 1: merhaba",
+      "parça 2: bu güvenilir",
+      "parça 3: bir dosya",
+      "parça 4: transfer",
+      "parça 5: denemesidir!",
+    ];
+
+    //
+    for (var i = 0; i < messages.length; i++) {
+      final msg = messages[i];
+      final messageBytes = Uint8List.fromList(msg.codeUnits);
+      debugPrint("\n--- gönderim başlıyor: $msg ---");
+      //
+      //sistem ACK gelene kadar burada bekleyecek
+      bool success = await sender!.sendPayload(messageBytes);
+      if (!success) {
+        debugPrint(
+          'hata: bağlantı tamamen koptu. dosya transferi iptal edildi.',
+        );
+        break;
+      }
+    }
+    debugPrint("\n dosya transferi tamamlandı!");
   }
 
   @override

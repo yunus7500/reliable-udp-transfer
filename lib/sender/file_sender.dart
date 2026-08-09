@@ -1,6 +1,7 @@
 // The logic behind splitting a file into chunks and sending it
 //
 import 'dart:io';
+import 'dart:async';
 import 'dart:typed_data' as dart_typed_data;
 import 'package:flutter/material.dart';
 import 'package:reliable_udp_transfer/protocol/packet.dart';
@@ -18,6 +19,7 @@ class ReliableSender {
   // ack gelmemiş paketlerin byte halleri ve zamanlayıcıları
   final Map<int, dart_typed_data.Uint8List> _unackedPackets = {};
   final Map<int, RetransmitTimer> _timers = {};
+  Completer<bool>? _ackCompleter;
 
   ReliableSender({required this.targetAddress, required this.targetPort});
 
@@ -60,11 +62,13 @@ class ReliableSender {
   }
 
   /// belirtilen veriyi bir paket haline getirip karşıya fırlatır
-  void sendPayload(dart_typed_data.Uint8List payload) {
+  Future<bool> sendPayload(dart_typed_data.Uint8List payload) async {
     if (_socket == null) {
-      debugPrint('hata: soket henüz başlatılmamış! önce start() çağrılmalı');
-      return;
+      debugPrint('hata: soket henüz başlatılmamış');
+      return false;
     }
+    // her yeni paket gönderiminde yeni bir bekleyici (Completer) oluştur
+    _ackCompleter = Completer<bool>();
     _currentSequenceNumber++;
 
     //  zarfımızı (paketimizi) hazırlıyoruz
@@ -93,6 +97,12 @@ class ReliableSender {
         debugPrint('bağlantı koptu.sıra no: $seqNum karşıya iletilemiyor.');
         _timers.remove(seqNum);
         _unackedPackets.remove(seqNum);
+        // eğer 5 denemede bile gitmezse işlemi başarısız (false) olarak sonlandır
+        if (!(_ackCompleter?.isCompleted ?? true)) {
+          _ackCompleter?.complete(
+            false,
+          ); // ACK geldi, beklemeyi başarıyla (true) bitir!
+        }
       },
     );
     _timers[seqNum] = timer;
@@ -102,6 +112,7 @@ class ReliableSender {
     debugPrint(
       'paket fırlatıldı! -> sıra no: $_currentSequenceNumber, boyut: ${bytes.length} byte',
     );
+    return _ackCompleter!.future;
   }
 
   /// soketi kapatır
