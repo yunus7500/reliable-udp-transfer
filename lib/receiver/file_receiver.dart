@@ -1,5 +1,6 @@
 // Logic for picking up and sorting/combining chunks
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data' as dart_typed_data;
 import 'package:flutter/material.dart';
 import 'package:reliable_udp_transfer/protocol/packet.dart';
@@ -36,8 +37,16 @@ class ReliableReceiver {
   ) {
     try {
       final packet = Packet.fromBytes(data as dart_typed_data.Uint8List);
+
       // sadece 'data' tipli paketleri al
       if (packet.type == PacketType.data) {
+        if (Random().nextBool()) {
+          debugPrint(
+            'simülasyon: paket kasıtlı olarak düşürüldü (İnternet koptu varsay) -> sıra no: ${packet.sequenceNumber}',
+          );
+          return;
+        }
+
         debugPrint(
           'veri paketi başarıyla yakalandı ,sıra no:${packet.sequenceNumber},boyut:${packet.payload.length} byte',
         );

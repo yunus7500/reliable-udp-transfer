@@ -5,6 +5,8 @@ import 'dart:typed_data' as dart_typed_data;
 import 'package:flutter/material.dart';
 import 'package:reliable_udp_transfer/protocol/packet.dart';
 import 'package:reliable_udp_transfer/protocol/packet_type.dart';
+import 'package:reliable_udp_transfer/protocol/constants.dart';
+import 'package:reliable_udp_transfer/core/retransmit_timer.dart';
 
 class ReliableSender {
   final InternetAddress targetAddress;
@@ -13,6 +15,9 @@ class ReliableSender {
 
   // paketleri numaralandırmak için kullanacağımız sayaç
   int _currentSequenceNumber = 0;
+  // ack gelmemiş paketlerin byte halleri ve zamanlayıcıları
+  final Map<int, dart_typed_data.Uint8List> _unackedPackets = {};
+  final Map<int, RetransmitTimer> _timers = {};
 
   ReliableSender({required this.targetAddress, required this.targetPort});
 
@@ -39,6 +44,15 @@ class ReliableSender {
 
       if (packet.type == PacketType.ack) {
         debugPrint('ACK alındı! sıra no: ${packet.sequenceNumber}');
+        final seqNum = packet.sequenceNumber;
+        if (_timers.containsKey(seqNum)) {
+          _timers[seqNum]?.stop();
+          _timers.remove(seqNum);
+          _unackedPackets.remove(seqNum);
+          debugPrint(
+            'sıra No: $seqNum başarıyla teslim edildi. zamanlayıcı durduruldu.',
+          );
+        }
       }
     } catch (e) {
       debugPrint('gelen paket okunamadı (bozuk olabilir): $e');
@@ -53,19 +67,38 @@ class ReliableSender {
     }
     _currentSequenceNumber++;
 
-    // 1: zarfımızı (paketimizi) hazırlıyoruz
+    //  zarfımızı (paketimizi) hazırlıyoruz
     final packet = Packet(
       sequenceNumber: _currentSequenceNumber,
       type: PacketType.data, // İçinde veri olduğunu belirtiyoruz
       payload: payload,
     );
 
-    // 2: zarfı internetten geçebilmesi için 0 ve 1'lere çeviriyoruz
+    //  zarfı internetten geçebilmesi için 0 ve 1'lere çeviriyoruz
     final bytes = packet.toBytes();
+    //paketin byte halini hafızaya al(tekrar gödermek için gerekir)
+    final seqNum = _currentSequenceNumber;
+    _unackedPackets[seqNum] = bytes;
 
-    // 3: UDP soketinden karşı tarafın IP ve Portuna fırlatıyoruz (Piyuuuv!)
+    //bu pakete özel kronometre başlat
+    final timer = RetransmitTimer(
+      timeout: ProtocolConstants.retransmissionTimeout,
+      maxRetries: ProtocolConstants.maxRetries,
+      onTimeout: () {
+        if (_unackedPackets.containsKey(seqNum)) {
+          _socket?.send(_unackedPackets[seqNum]!, targetAddress, targetPort);
+        }
+      },
+      onFail: () {
+        debugPrint('bağlantı koptu.sıra no: $seqNum karşıya iletilemiyor.');
+        _timers.remove(seqNum);
+        _unackedPackets.remove(seqNum);
+      },
+    );
+    _timers[seqNum] = timer;
+    timer.start();
+    // udp soketinden karşı tarafın IP ve portuna ilk kez fırlatıyoruz
     _socket?.send(bytes, targetAddress, targetPort);
-
     debugPrint(
       'paket fırlatıldı! -> sıra no: $_currentSequenceNumber, boyut: ${bytes.length} byte',
     );
