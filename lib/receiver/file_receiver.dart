@@ -9,6 +9,8 @@ import 'package:reliable_udp_transfer/protocol/packet_type.dart';
 class ReliableReceiver {
   final int listenPort;
   RawDatagramSocket? _socket;
+  // gelen parçaları sırasına göre biriktireceğimiz liste
+  final Map<int, dart_typed_data.Uint8List> _receivedChunks = {};
   ReliableReceiver({required this.listenPort});
 
   // soketi başlatır , belirtilen portu dinlemeye başlar
@@ -38,25 +40,48 @@ class ReliableReceiver {
     try {
       final packet = Packet.fromBytes(data as dart_typed_data.Uint8List);
 
-      // sadece 'data' tipli paketleri al
       if (packet.type == PacketType.data) {
-        if (Random().nextBool()) {
-          debugPrint(
-            'simülasyon: paket kasıtlı olarak düşürüldü (İnternet koptu varsay) -> sıra no: ${packet.sequenceNumber}',
-          );
-          return;
-        }
-
+        _receivedChunks[packet.sequenceNumber] = packet.payload;
         debugPrint(
-          'veri paketi başarıyla yakalandı ,sıra no:${packet.sequenceNumber},boyut:${packet.payload.length} byte',
+          'Parça başarıyla --yakalandı-- ve --kaydedildi-- sıra no: ${packet.sequenceNumber}',
         );
-
-        // paketi aldık ack demeliyiz
         _sendAck(packet.sequenceNumber, senderAddress, senderPort);
+      } else if (packet.type == PacketType.fileEnd) {
+        debugPrint(
+          '\n"Dosya Bitti" paketi alındı! Parçalar birleştiriliyor...',
+        );
+        _assembleFile(); // parçaları birleştiren fonksiyonu çağır
+        _sendAck(
+          packet.sequenceNumber,
+          senderAddress,
+          senderPort,
+        ); // göndericiye 'bitiş onayını da aldım' de
       }
     } catch (e) {
       debugPrint('alıcı gelen paketi okuyamadı (bozuk olabilir): $e');
     }
+  }
+
+  void _assembleFile() {
+    if (_receivedChunks.isEmpty) return;
+    final sortedKeys = _receivedChunks.keys.toList()..sort();
+    final builder = BytesBuilder();
+    int totalLength = 0;
+
+    for (var key in sortedKeys) {
+      final chunkData = _receivedChunks[key]!;
+      builder.add(chunkData);
+      totalLength += chunkData.length;
+    }
+    // birleştirilmiş tam dosyanın byte hali
+    final complateFileBytes = builder.takeBytes();
+    //test amaçlı: byte ları tekrar okunabilir metne çevirip konsola
+    final completeText = String.fromCharCodes(complateFileBytes);
+
+    debugPrint('\n dosya başarıyla birleştirildi');
+    debugPrint('toplam boyut: $totalLength byte');
+    debugPrint('dosyanın asıl içeriği: $completeText\n');
+    _receivedChunks.clear();
   }
 
   void _sendAck(

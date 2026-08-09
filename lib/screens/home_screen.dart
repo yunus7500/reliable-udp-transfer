@@ -59,6 +59,8 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       }
     }
+    // 5 parça da gittikten hemen sonra
+    await sender!.sendFileEnd();
     debugPrint("\n dosya transferi tamamlandı!");
   }
 

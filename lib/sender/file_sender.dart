@@ -55,6 +55,10 @@ class ReliableSender {
             'sıra No: $seqNum başarıyla teslim edildi. zamanlayıcı durduruldu.',
           );
         }
+
+        if (!(_ackCompleter?.isCompleted ?? true)) {
+          _ackCompleter?.complete(true);
+        }
       }
     } catch (e) {
       debugPrint('gelen paket okunamadı (bozuk olabilir): $e');
@@ -119,5 +123,50 @@ class ReliableSender {
   void stop() {
     _socket?.close();
     debugPrint('gönderici durduruldu');
+  }
+
+  /// bütün parçalar başarıyla gönderildikten sonra karşıya "sosya bitti" paketini fırlatır
+  Future<bool> sendFileEnd() async {
+    if (_socket == null) return false;
+
+    _ackCompleter = Completer<bool>();
+    _currentSequenceNumber++;
+
+    // zarfın tipini 'fileEnd' yapıyoruz, içi (payload) boş kalır
+    final packet = Packet(
+      sequenceNumber: _currentSequenceNumber,
+      type: PacketType.fileEnd,
+      payload: dart_typed_data.Uint8List(0),
+    );
+
+    final bytes = packet.toBytes();
+    final seqNum = _currentSequenceNumber;
+    _unackedPackets[seqNum] = bytes;
+
+    final timer = RetransmitTimer(
+      timeout: ProtocolConstants.retransmissionTimeout,
+      maxRetries: ProtocolConstants.maxRetries,
+      onTimeout: () {
+        if (_unackedPackets.containsKey(seqNum)) {
+          _socket?.send(_unackedPackets[seqNum]!, targetAddress, targetPort);
+        }
+      },
+      onFail: () {
+        debugPrint('bitiş paketi iletilemedi!');
+        _timers.remove(seqNum);
+        _unackedPackets.remove(seqNum);
+        if (!(_ackCompleter?.isCompleted ?? true)) {
+          _ackCompleter?.complete(false);
+        }
+      },
+    );
+    _timers[seqNum] = timer;
+    timer.start();
+    _socket?.send(bytes, targetAddress, targetPort);
+
+    debugPrint(
+      'dosya bitiş (fileEnd) paketi fırlatıldı! -> sıra no: $_currentSequenceNumber',
+    );
+    return _ackCompleter!.future;
   }
 }
