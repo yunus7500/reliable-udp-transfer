@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _startSenderAndSend() async {
     if (isSending) return;
+
     setState(() {
       isSending = true;
     });
@@ -66,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (sender == null) {
       sender = ReliableSender(
         targetAddress: InternetAddress.loopbackIPv4,
+        //targetAddress: InternetAddress('alıcı cihazın ip'i'),
         targetPort: 5000,
         windowSize: 5,
         onLog: (msg, {isError = false}) =>
@@ -128,9 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: const Text('1--alıcıyı başlat'),
                 ),
                 ElevatedButton(
-                  onPressed: (receiver != null && !isSending)
-                      ? _startSenderAndSend
-                      : null,
+                  onPressed: (!isSending) ? _startSenderAndSend : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade100,
                   ),
