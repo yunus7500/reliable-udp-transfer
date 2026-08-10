@@ -27,3 +27,7 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+.idea/
+.DS_Store
+.metadata
+*.iml
