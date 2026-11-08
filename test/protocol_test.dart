@@ -30,6 +30,22 @@ void main() {
       //
       // checksum değerinin hiç bozulmadan karşıya ulaştığının kanıtı
       expect(decodedPacket.checksum, originalPacket.checksum);
+      expect(decodedPacket.isValidChecksum, isTrue);
+    });
+
+    test('bozuk paket checksum kontrolunde reddedilmeli', () {
+      final payload = Uint8List.fromList([10, 20, 30, 40]);
+      final originalPacket = Packet(
+        sequenceNumber: 1,
+        type: PacketType.data,
+        payload: payload,
+      );
+
+      final bytes = originalPacket.toBytes();
+      // Payload içindeki bir byte'ı bilerek bozuyoruz
+      bytes[bytes.length - 1] ^= 0xFF;
+
+      expect(() => Packet.fromBytes(bytes), throwsFormatException);
     });
   });
 }

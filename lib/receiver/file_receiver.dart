@@ -1,6 +1,6 @@
 // Logic for picking up and sorting/combining chunks
 import 'dart:io';
-import 'dart:math';
+import 'dart:typed_data' show BytesBuilder;
 import 'dart:typed_data' as dart_typed_data;
 import 'package:flutter/material.dart';
 import 'package:reliable_udp_transfer/protocol/packet.dart';
@@ -52,7 +52,7 @@ class ReliableReceiver {
         );
         _sendAck(packet.sequenceNumber, senderAddress, senderPort);
       } else if (packet.type == PacketType.fileEnd) {
-        _log('\n"osya Bitti" paketi alındı! parçalar birleştiriliyor...');
+        _log('\n"Dosya Bitti" paketi alındı! parçalar birleştiriliyor...');
         _assembleFile();
         _sendAck(packet.sequenceNumber, senderAddress, senderPort);
       }

@@ -15,13 +15,50 @@ class _HomeScreenState extends State<HomeScreen> {
   ReliableSender? sender;
 
   bool isSending = false;
+  String localIp = 'yükleniyor...';
+  final TextEditingController _ipController = TextEditingController(
+    text: '127.0.0.1',
+  );
   List<Map<String, dynamic>> systemLogs = [];
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLocalIp();
+  }
+
+  Future<void> _fetchLocalIp() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+      final ips = <String>[];
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          ips.add('${addr.address} (${interface.name})');
+        }
+      }
+      if (mounted) {
+        setState(() {
+          localIp = ips.isEmpty ? '127.0.0.1' : ips.join(', ');
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          localIp = 'alınamadı';
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
     receiver?.stop();
     sender?.stop();
+    _ipController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -60,21 +97,30 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startSenderAndSend() async {
     if (isSending) return;
 
+    final ipText = _ipController.text.trim();
+    final parsedIp = InternetAddress.tryParse(ipText);
+    if (parsedIp == null) {
+      _addLog(
+        'sistem',
+        'hata: geçersiz IP adresi ($ipText)',
+        isError: true,
+      );
+      return;
+    }
+
     setState(() {
       isSending = true;
     });
 
-    if (sender == null) {
-      sender = ReliableSender(
-        targetAddress: InternetAddress.loopbackIPv4,
-        //targetAddress: InternetAddress('alıcı cihazın ip'i'),
-        targetPort: 5000,
-        windowSize: 5,
-        onLog: (msg, {isError = false}) =>
-            _addLog('gönderici', msg, isError: isError),
-      );
-      await sender?.start();
-    }
+    sender?.stop();
+    sender = ReliableSender(
+      targetAddress: parsedIp,
+      targetPort: 5000,
+      windowSize: 5,
+      onLog: (msg, {isError = false}) =>
+          _addLog('gönderici', msg, isError: isError),
+    );
+    await sender?.start();
 
     final messages = List.generate(100, (i) => "veri parçası ${i + 1}");
 
@@ -116,31 +162,70 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Wrap(
-              alignment: WrapAlignment.spaceEvenly,
-              spacing: 10,
-              runSpacing: 10,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ElevatedButton(
-                  onPressed: receiver == null ? _startReceiver : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade100,
-                  ),
-                  child: const Text('1--alıcıyı başlat'),
+                Row(
+                  children: [
+                    const Icon(Icons.wifi, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: SelectableText(
+                        'Bu cihazın IP\'si: $localIp',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, size: 18),
+                      tooltip: 'IP Yenile',
+                      onPressed: _fetchLocalIp,
+                    ),
+                  ],
                 ),
-                ElevatedButton(
-                  onPressed: (!isSending) ? _startSenderAndSend : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade100,
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _ipController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
                   ),
-                  child: isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('2--gönderimi başlat'),
+                  decoration: const InputDecoration(
+                    labelText: 'Hedef (Alıcı) IP Adresi',
+                    hintText: 'Örn: 192.168.1.45 veya 127.0.0.1',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  alignment: WrapAlignment.spaceEvenly,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    ElevatedButton(
+                      onPressed: receiver == null ? _startReceiver : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade100,
+                      ),
+                      child: const Text('1--alıcıyı başlat'),
+                    ),
+                    ElevatedButton(
+                      onPressed: (!isSending) ? _startSenderAndSend : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade100,
+                      ),
+                      child: isSending
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('2--gönderimi başlat'),
+                    ),
+                  ],
                 ),
               ],
             ),

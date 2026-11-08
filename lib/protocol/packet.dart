@@ -44,6 +44,9 @@ class Packet {
     return Checksum.calculate(dataToHash);
   }
 
+  /// Paketin taşıdığı checksum ile içeriğinden hesaplanan checksum uyuşuyor mu?
+  bool get isValidChecksum => checksum == _calculateChecksum();
+
   /// paketi UDP soketinden gönderebilmek için byte dizisine dönüştürür
 
   Uint8List toBytes() {
@@ -84,17 +87,26 @@ class Packet {
     // byte'tan okunan tipi PacketType enum'una çevir
     PacketType type = PacketType.fromValue(typeValue);
 
+    if (bytes.length < ProtocolConstants.headerSize + payloadLength) {
+      throw const FormatException('paket boyutu eksik veya bozuk');
+    }
+
     // payload'ı asıl dizinin içinden kesip al
     Uint8List payload = bytes.sublist(
       ProtocolConstants.headerSize,
       ProtocolConstants.headerSize + payloadLength,
     );
-    return Packet(
+    final packet = Packet(
       sequenceNumber: seq,
       type: type,
       payload: payload,
-
       providedChecksum: checksum,
     );
+
+    if (!packet.isValidChecksum) {
+      throw const FormatException('checksum doğrulaması başarısız (veri bozuk)');
+    }
+
+    return packet;
   }
 }
