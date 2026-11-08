@@ -1,12 +1,10 @@
-//  Resend timer if no ACK is received.
 import 'dart:async';
-import 'package:flutter/material.dart';
 
 class RetransmitTimer {
   final Duration timeout;
   final int maxRetries;
-  final Function() onTimeout; // süre dolduğunda çalışır.
-  final Function() onFail; // maksimum denemeye ulaşıldığında çalışır.
+  final void Function() onTimeout;
+  final void Function() onFail;
 
   Timer? _timer;
   int _retryCount = 0;
@@ -20,24 +18,18 @@ class RetransmitTimer {
 
   void start() {
     _retryCount = 0;
-    _startInternal();
+    _schedule();
   }
 
-  void _startInternal() {
+  void _schedule() {
     _timer?.cancel();
-
     _timer = Timer(timeout, () {
       _retryCount++;
-
       if (_retryCount > maxRetries) {
-        debugPrint('maksimum deneme sayısına ulaşıldı,pes ediliyor');
         onFail();
       } else {
-        debugPrint(
-          'zaman aşımı. paket kaybolmuş olabilir,tekrar fırlatılıyor.deneme:$_retryCount',
-        );
         onTimeout();
-        _startInternal(); // tekrar fırlatıldığı için sayacı yeniden başlat
+        _schedule();
       }
     });
   }
