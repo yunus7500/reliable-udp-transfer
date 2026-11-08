@@ -1,85 +1,64 @@
-# Reliable UDP Transfer (Kendi TCP'miz)
+# Reliable UDP File Transfer
 
-Custom reliable data transfer protocol built on raw UDP sockets, implementing
-sequencing, ACK-based delivery, and retransmission — a from-scratch alternative
-to TCP's reliability layer using Flutter/Dart.
+Custom reliable P2P file transfer protocol built on raw UDP sockets (`RawDatagramSocket`) in Dart & Flutter — implementing custom binary framing, CRC32 checksum verification, sliding-window flow control, automatic retransmission, zero-RAM disk streaming, and STUN/NAT hole punching from scratch without relying on TCP.
 
-Bu proje, doğası gereği güvensiz ve paketin hedefe ulaşıp ulaşmadığını
-umursamayan **UDP (User Datagram Protocol)** üzerine inşa edilmiş, veri kaybını
-önleyen **güvenilir bir katman (Reliability Layer)** mimarisidir.
-
-Ağ mühendisliğinde TCP'nin (Transmission Control Protocol) arka planda
-hayatımızı nasıl kurtardığını anlamak için sıfırdan yazılmış mükemmel bir eğitim
-ve test projesidir.
+Bu proje, doğası gereği bağlantı kurmayan ve paket teslimatını garanti etmeyen **UDP (User Datagram Protocol)** üzerine sıfırdan inşa edilmiş **güvenilir bir dosya aktarım protokolü (Reliability Layer)** ve çapraz platform (iOS, Android, macOS) uygulamasıdır.
 
 ---
 
-## Özellikler (Features)
+## Temel Özellikler (Key Features)
 
-- **Parçalama ve Birleştirme (Chunking & Reassembly):** Büyük veriler (veya
-  metinler) ağın taşıyabileceği küçük Byte paketlerine (Datagram) bölünür ve
-  karşı tarafta sırasına göre hatasız bir şekilde geri birleştirilir.
-- **Sequence Numbers (Sıra Numaraları):** Havada kaybolan veya sırası karışan
-  paketlerin doğru sıraya dizilmesini sağlar.
-- **ACK Mekanizması (Acknowledge):** Alıcı, yakaladığı her paket için
-  göndericiye "Aldım" (ACK) onayı gönderir.
-- **Zamanlayıcı ve Tekrar Gönderim (Retransmission):** Gönderici paketi
-  fırlattıktan sonra bir kronometre (RetransmitTimer) başlatır. Eğer ACK
-  zamanında gelmezse (veya paket havada kaybolmuşsa), paketi otomatik olarak
-  tekrar fırlatır.
-- **Sliding Window (Kayan Pencere Mimarisi):** Stop-and-Wait (Gönder-Bekle)
-  mantığındaki yavaşlığı çözmek için aynı anda N adet (örn: 5) paketin havaya
-  fırlatılmasına izin veren modern bir transfer kontrol algoritması.
-- **Canlı Sistem Logları (Real-time UI):** Transfer esnasında fırlatılan
-  parçaların, alınan ACK'ların ve zaman aşımlarının Flutter arayüzünde yeşil,
-  mavi ve kırmızı renklerle canlı olarak izlenebilmesi.
+- **Özel Binary Paket Yapısı (13-Byte Custom Header):**
+  - `[4B Sequence Number] + [1B Packet Type] + [4B Payload Length] + [4B CRC32 Checksum] + [Payload (max 1400B)]`
+  - Her paket ağdan okunduğunda **CRC32 Checksum** doğrulamasından geçer; bozuk paketler anında reddedilir.
+- **Sıfır RAM Yükü ile Disk Streaming (`RandomAccessFile`):**
+  - Dosyalar belleğe (RAM) yüklenmez. Gönderici dosyayı diskten `1400 byte`'lık parçalar halinde okur; alıcı ise paket hangi sırayla gelirse gelsin `(sequenceNumber - 1) * 1400` ofsetine (`setPositionSync` + `writeFromSync`) doğrudan diske yazar.
+  - Mükerrer paket takibi `Map` yerine bit dizisi (`Uint8List` bitmap) ile yapılır; çoklu GB boyutundaki dosyalarda dahi RAM kullanımı bir-iki MB'ı geçmez.
+- **Sliding Window (Kayan Pencere) & Event-Driven ACK:**
+  - Stop-and-Wait yavaşlığını önlemek için aynı anda pencere boyutu kadar (`windowSize = 64`) paketi havada (in-flight) tutar.
+  - Her paket diske senkron olarak yazıldıktan sonra `ACK` gönderilir; süresi içinde (`300ms`) `ACK` gelmeyen paketler `RetransmitTimer` ile otomatik olarak tekrar fırlatılır.
+- **4 Haneli Kod ile Eşleşme + STUN & UDP Hole Punching:**
+  - Kullanıcıların karmaşık IP ve Port numaralarıyla uğraşmaması için her cihaz açılışta 4 haneli bir bağlantı kodu üretir.
+  - Google STUN (`stun.l.google.com:19302`) üzerinden cihazların dış (Public) `IP:Port` adresleri tespit edilir ve karşılıklı UDP sinyal paketleriyle NAT güvenlik duvarında delik açılarak (UDP Hole Punching) doğrudan P2P bağlantı kurulur.
+- **Bağımlılıksız Native Köprü (`MethodChannel`):**
+  - Üçüncü parti ağır eklentiler kullanmadan iOS (`UIDocumentPickerViewController`, `UIActivityViewController`, `beginBackgroundTask`) ve Android (`ACTION_OPEN_DOCUMENT`, `MediaStore.Downloads`, `WakeLock` / `WifiLock`) ile doğrudan iletişim kurar.
 
 ---
 
-## Nasıl Çalıştırılır?
+## Nasıl Kullanılır? (How to Run)
 
-Projeyi bilgisayarınızda (Emülatör) veya gerçek telefonunuzda test
-edebilirsiniz.
-
-### Tek Cihazda Test (Localhost)
-
-1. `lib/screens/home_screen.dart` dosyasını açın.
-2. `targetAddress` kısmının `InternetAddress.loopbackIPv4` olduğundan emin olun.
-3. Uygulamayı çalıştırın.
-4. Ekranda önce **"1--alıcıyı başlat"** butonuna, ardından **"2--gönderimi
-   başlat"** butonuna basın.
-5. 100 paketin saniyeler içinde fırlatılıp simüle edildiğini log ekranından
-   izleyin.
-
-### İki Farklı Cihazda Test (Wireless / Hotspot)
-
-Uygulamayı Mac ve Telefon arasında gerçek bir Wi-Fi ağı üzerinden test
-edebilirsiniz!
-
-1. İki cihazı aynı Wi-Fi ağına bağlayın (Veya telefondan Hotspot açıp
-   bilgisayarı bağlayın).
-2. **Alıcı** olacak cihazın yerel IP adresini öğrenin (Örn: `[IP_ADDRESS]`).
-3. `home_screen.dart` dosyasında `targetAddress` kısmını güncelleyin:
-   ```dart
-   targetAddress: InternetAddress('[IP_ADDRESS]'),
+1. Projeyi iki cihazda (iOS, Android veya macOS) çalıştırın:
+   ```bash
+   flutter run
    ```
-4. Kodunuzu iki cihazda da çalıştırın. (Not: Android release build için
-   `AndroidManifest.xml` içine INTERNET izni zaten eklenmiştir).
-5. **Alıcı (Telefon)** cihazında "Alıcıyı Başlat" butonuna basın.
-6. **Gönderici (Bilgisayar)** cihazında "Gönderimi Başlat" butonuna basın.
-7. Ağ üzerinden uçan paketleri canlı izleyin!
+2. **Alıcı Cihaz:** Uygulama açıldığında ekranda otomatik olarak **4 haneli bir Bağlantı Kodu** (Örn: `4829`) görünür. Alıcı cihazda hiçbir tuşa basmanıza gerek yoktur.
+3. **Gönderici Cihaz:** Alıcı ekrandaki 4 haneli kodu kutuya girin ve **"Dosya Seç & Gönder"** butonuna basın.
+4. İstediğiniz dosyayı (`PDF`, `MP4`, `JPG`, `PNG`, `DOCX`, `XLSX`, `PPTX`, `ZIP` vb.) seçin.
+   - Cihazlar aynı Wi-Fi ağındaysa yerel ağ (LAN) üzerinden, farklı ağlardaysa STUN + NAT Hole Punching üzerinden doğrudan aktarım başlar.
+5. Aktarım `%100` olduğunda **Kaydet / Aç** butonuyla dosyayı açabilir veya galeriye/cihaza kaydedebilirsiniz.
 
 ---
 
-## Mimari Detaylar
+## Mimari Yapı (Architecture)
 
-Proje üç ana modülden oluşmaktadır:
-
-1. **Protocol (`lib/protocol/`)**: Byte dönüştürme işlemleri, Paket başlıkları
-   (Sequence No, Type, Payload boyutu) ve `Packet` modeli.
-2. **Sender (`lib/sender/`)**: UDP Soketini açan, `RetransmitTimer` kullanarak
-   zaman aşımlarını takip eden ve Kayan Pencere (Sliding Window) mekanizmasıyla
-   ACK gelene kadar verileri askıda (in-flight) tutan gönderici modülü.
-3. **Receiver (`lib/receiver/`)**: Dinleyici UDP Soketini açan, gelen paketleri
-   sıra numarasına göre hafızada biriktiren ve "Dosya Bitti" (fileEnd) komutu
-   geldiğinde tüm byte'ları asıl veriye dönüştüren alıcı modülü.
+```text
+lib/
+├── core/
+│   ├── platform_helper.dart    # Native dosya seçici, kayıt dizini ve arkaplan kilidi
+│   ├── retransmit_timer.dart   # Paket bazlı timeout ve yeniden gönderim sayacı
+│   ├── signaling_client.dart   # 4 haneli oda kodu ile otomatik adres eşleştirme
+│   └── stun_client.dart        # RFC 5389 STUN istemcisi (Public IP:Port tespiti)
+├── protocol/
+│   ├── checksum.dart           # CRC32 bütünlük hesaplaması
+│   ├── constants.dart          # MTU/Payload (1400B), pencere boyutu (64) ve timeout sabitleri
+│   ├── file_meta.dart          # Handshake paketinde taşınan dosya adı ve boyut bilgisi
+│   ├── packet.dart             # 13-byte binary header encode/decode
+│   └── packet_type.dart        # Paket tipleri (handshakeInit, handshakeAck, data, ack, fileEnd)
+├── receiver/
+│   └── file_receiver.dart      # Bitmap tabanlı, doğrudan diske yazan UDP alıcısı
+├── sender/
+│   └── file_sender.dart        # Diskten akışlı okuyan kayan pencereli UDP göndericisi
+└── screens/
+    ├── home_screen.dart        # Ana ekran ve transfer akışı
+    └── info_widgets.dart       # Bağlantı kodu kartı ve kullanım rehberi
+```

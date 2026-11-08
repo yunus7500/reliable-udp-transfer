@@ -120,10 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _roomListener.publish(_myCode, 'RES|$_localIp:$port|$_publicAddr');
       _log('Karşı cihaz bağlandı, dosya alımı hazırlanıyor...');
 
-      final candidates = <(InternetAddress, int)>[
-        if (senderLocal != null) senderLocal,
-        if (senderPub != null) senderPub,
-      ];
+      final candidates = <(InternetAddress, int)>[?senderLocal, ?senderPub];
       _receiver?.punchCandidates(candidates);
     };
 
@@ -140,7 +137,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (input == _myCode) {
-      _log('Hata: Kendi cihaz kodunuzu yazdınız. Lütfen karşı cihazdaki kodu girin.');
+      _log(
+        'Hata: Kendi cihaz kodunuzu yazdınız. Lütfen karşı cihazdaki kodu girin.',
+      );
       return null;
     }
 
@@ -186,10 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final recLocal = StunClient.parseTarget(addrs!.$1);
     final recPub = StunClient.parseTarget(addrs.$2);
 
-    final candidates = <(InternetAddress, int)>[
-      if (recLocal != null) recLocal,
-      if (recPub != null) recPub,
-    ];
+    final candidates = <(InternetAddress, int)>[?recLocal, ?recPub];
     if (candidates.isEmpty) return null;
 
     final udpVerified = Completer<(InternetAddress, int)>();
@@ -252,7 +248,9 @@ class _HomeScreenState extends State<HomeScreen> {
     await _sender!.start();
     final ok = await _sender!.sendFile(File(picked.path), picked.name);
     if (!ok) {
-      _log('Hata: Bağlantı kesildi, dosya gönderilemedi. Lütfen tekrar deneyin.');
+      _log(
+        'Hata: Bağlantı kesildi, dosya gönderilemedi. Lütfen tekrar deneyin.',
+      );
     }
 
     if (mounted) setState(() => _isSending = false);
@@ -260,15 +258,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final progress =
-        _totalBytes > 0 ? (_doneBytes / _totalBytes).clamp(0.0, 1.0) : 0.0;
+    final progress = _totalBytes > 0
+        ? (_doneBytes / _totalBytes).clamp(0.0, 1.0)
+        : 0.0;
     final percent = (progress * 100).toInt();
-    final displayLines =
-        _logs.length <= 1 ? [...UsageGuide.steps, '', ..._logs] : _logs;
+    final displayLines = _logs.length <= 1
+        ? [...UsageGuide.steps, '', ..._logs]
+        : _logs;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('UDP Dosya Transferi', style: TextStyle(fontSize: 18)),
+        title: const Text(
+          'UDP Dosya Transferi',
+          style: TextStyle(fontSize: 18),
+        ),
         centerTitle: false,
         actions: [
           TextButton(
